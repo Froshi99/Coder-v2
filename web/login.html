@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex">
+  <title>Anmelden – Coder</title>
+  <script>
+    (function () {
+      var theme = null, design = null, palette = null;
+      try {
+        theme = localStorage.getItem("coder.theme");
+        design = localStorage.getItem("coder.design");
+        palette = localStorage.getItem("coder.palette");
+      } catch (e) { /* privates Fenster */ }
+      var dark = (theme === "light" || theme === "dark") ? theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+      if (design) document.documentElement.dataset.design = design;
+      if (palette && palette !== "standard") document.documentElement.dataset.palette = palette;
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/styles.css?v=1.12.0">
+  <style>
+    body { overflow: auto; }
+    .login { min-height: 100vh; display: grid; place-items: center; padding: var(--s5) var(--s4); }
+    .login-box { width: min(380px, 100%); }
+    .login .brand { margin-bottom: var(--s6); }
+    .login h1 { margin: 0 0 var(--s2); font: 600 var(--t-xl)/1.25 var(--font-display); letter-spacing: -0.01em; }
+    .login p { margin: 0 0 var(--s5); font-size: var(--t-sm); line-height: 1.55; color: var(--text-2); }
+    .login form { display: grid; gap: var(--s3); }
+    .login label { display: grid; gap: 6px; font-size: var(--t-xs); font-weight: 600; color: var(--text-2); }
+    .login input:not([type="checkbox"]) {
+      height: 40px; padding: 0 var(--s3); border-radius: var(--r-md);
+      border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+      font-size: var(--t-sm); outline: 0;
+      transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+    }
+    .login input:not([type="checkbox"]):focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .login .btn { height: 40px; margin-top: var(--s2); }
+    .login .show-pw { display: flex; align-items: center; gap: var(--s2); font-weight: 400; color: var(--text-3); cursor: pointer; }
+    .login .show-pw input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
+    .login-error { margin: 0; font-size: var(--t-xs); color: var(--danger); }
+    .login-error:empty { display: none; }
+    .login-foot { margin-top: var(--s6); padding-top: var(--s4); border-top: 1px solid var(--border); font-size: var(--t-xs); color: var(--text-3); }
+    .login-foot a { color: var(--text-2); }
+  </style>
+</head>
+<body>
+<main class="login">
+  <div class="login-box">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8.5 7 3.5 12l5 5M15.5 7l5 5-5 5"/></svg></span>
+      Coder
+    </div>
+
+    <section id="signin">
+      <h1>Anmelden</h1>
+      <p>Dieser Coder läuft auf einem anderen Rechner. Melde dich mit dem Konto an, zu dem du eingeladen wurdest.</p>
+      <form id="signinForm">
+        <label>Name<input id="name" autocomplete="username" spellcheck="false" required autofocus></label>
+        <label>Passwort<input id="password" type="password" autocomplete="current-password" required></label>
+        <label class="show-pw"><input type="checkbox" data-show="password"> Passwort anzeigen</label>
+        <p class="login-error" id="signinError" role="alert"></p>
+        <button class="btn primary" type="submit">Anmelden</button>
+      </form>
+    </section>
+
+    <section id="welcome" hidden>
+      <h1 id="welcomeTitle">Willkommen</h1>
+      <p id="welcomeText"></p>
+      <form id="welcomeForm">
+        <input id="welcomeUser" autocomplete="username" hidden>
+        <label>Passwort<input id="newPassword" type="password" autocomplete="new-password" required></label>
+        <label>Noch einmal<input id="newPassword2" type="password" autocomplete="new-password" required></label>
+        <label class="show-pw"><input type="checkbox" data-show="newPassword newPassword2"> Passwörter anzeigen</label>
+        <p class="login-error" id="welcomeError" role="alert"></p>
+        <button class="btn primary" type="submit">Passwort festlegen</button>
+      </form>
+    </section>
+
+    <p class="login-foot">Passwort vergessen? Wer Coder verwaltet, kann dir einen neuen Link schicken.</p>
+  </div>
+</main>
+<script>
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const code = new URLSearchParams(location.search).get("invite") || "";
+
+  async function post(path, body) {
+    const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+    return data;
+  }
+
+  // Auf dem Handy vertippt man sich leicht – ein Blick aufs Passwort erspart den zweiten Versuch.
+  document.addEventListener("change", (e) => {
+    const box = e.target.closest("[data-show]");
+    if (!box) return;
+    for (const id of box.dataset.show.split(" ")) $(id).type = box.checked ? "text" : "password";
+  });
+
+  function busy(form, on) {
+    const btn = form.querySelector("button[type=submit]");
+    btn.disabled = on;
+  }
+
+  $("signinForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    $("signinError").textContent = "";
+    busy(form, true);
+    try {
+      await post("/api/login", { name: $("name").value.trim(), password: $("password").value });
+      location.replace("/");
+    } catch (err) {
+      $("signinError").textContent = err.message;
+      $("password").select();
+    } finally {
+      busy(form, false);
+    }
+  });
+
+  $("welcomeForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const pw = $("newPassword").value;
+    $("welcomeError").textContent = "";
+    if (pw !== $("newPassword2").value) {
+      $("welcomeError").textContent = "Die beiden Passwörter sind nicht gleich.";
+      return;
+    }
+    busy(form, true);
+    try {
+      await post("/api/invite", { code, password: pw });
+      location.replace("/");
+    } catch (err) {
+      $("welcomeError").textContent = err.message;
+    } finally {
+      busy(form, false);
+    }
+  });
+
+  (async function () {
+    if (!code) return;
+    try {
+      const res = await fetch(`/api/invite?code=${encodeURIComponent(code)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || res.statusText);
+      $("signin").hidden = true;
+      $("welcome").hidden = false;
+      $("welcomeTitle").textContent = `Willkommen, ${data.name}`;
+      $("welcomeText").textContent = `Du wurdest mit der Rolle „${data.role_label}“ eingeladen. Leg dein Passwort fest – mindestens ${data.min_password} Zeichen. Danach meldest du dich mit deinem Namen und diesem Passwort an.`;
+      $("welcomeUser").value = data.name;
+      $("newPassword").focus();
+    } catch (err) {
+      $("signinError").textContent = err.message;
+    }
+  })();
+</script>
+</body>
+</html>
